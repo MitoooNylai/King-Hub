@@ -24,11 +24,12 @@ local window = WindUI:CreateWindow({
     HasOutline = true,
 })
 
-local maintab = window:Tab({ Title = "main", Icon = "house" })
+local maintab = window:Tab({ Title = "main", Icon = "home" })
 local autofarmtab = window:Tab({ Title = "autofarm", Icon = "zap" })
 local esptab = window:Tab({ Title = "esp", Icon = "eye" })
 local animtab = window:Tab({ Title = "animations", Icon = "activity" })
 local visualtab = window:Tab({ Title = "visual", Icon = "sun" })
+local movementtab = window:Tab({ Title = "movement", Icon = "person-standing" })
 
 local players = game:GetService("Players")
 local localplayer = players.LocalPlayer
@@ -39,6 +40,62 @@ local replicatedstorage = game:GetService("ReplicatedStorage")
 local tweenservice = game:GetService("TweenService")
 local startergui = game:GetService("StarterGui") -- *purrs* Added for our rich player notifications! :3
 local Lighting = game:GetService("Lighting")
+
+-- Movement controls for the user's own Roblox experience.
+local NORMAL_WALK_SPEED = 16
+local selectedWalkSpeed = NORMAL_WALK_SPEED
+local walkEnabled = false
+
+local function getLocalHumanoid()
+    local character = localplayer.Character
+    return character and character:FindFirstChildOfClass("Humanoid")
+end
+
+local function applyWalkSpeed()
+    local humanoid = getLocalHumanoid()
+    if not humanoid then
+        return
+    end
+
+    if walkEnabled then
+        humanoid.WalkSpeed = selectedWalkSpeed
+    else
+        humanoid.WalkSpeed = NORMAL_WALK_SPEED
+    end
+end
+
+localplayer.CharacterAdded:Connect(function(character)
+    local humanoid = character:WaitForChild("Humanoid", 10)
+    if humanoid then
+        task.wait()
+        applyWalkSpeed()
+    end
+end)
+
+movementtab:Section({ Title = "movement settings" })
+
+movementtab:Toggle({
+    Title = "Walk",
+    Default = false,
+    Callback = function(value)
+        walkEnabled = value
+        applyWalkSpeed()
+    end
+})
+
+movementtab:Slider({
+    Title = "Walk Speed",
+    Min = 16,
+    Max = 100,
+    Default = 16,
+    Callback = function(value)
+        selectedWalkSpeed = value
+        if walkEnabled then
+            applyWalkSpeed()
+        end
+    end
+})
+
 
 -- Local visual No Fog toggle for Survive the Killer
 local noFogEnabled = false
