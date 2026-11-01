@@ -13,7 +13,7 @@ print("do not ignore these")
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Orionservice-hub/Windui-boreal/refs/heads/main/WindUI%20boreal"))()
 
 local window = WindUI:CreateWindow({
-    Title = "King Hub V1",
+    Title = "stk",
     Icon = "rbxassetid://4483345998",
     Author = "xane",
     Folder = "stk_config",
@@ -28,6 +28,7 @@ local maintab = window:Tab({ Title = "main", Icon = "home" })
 local autofarmtab = window:Tab({ Title = "autofarm", Icon = "zap" })
 local esptab = window:Tab({ Title = "esp", Icon = "eye" })
 local animtab = window:Tab({ Title = "animations", Icon = "activity" })
+local visualtab = window:Tab({ Title = "visual", Icon = "sun" })
 
 local players = game:GetService("Players")
 local localplayer = players.LocalPlayer
@@ -374,13 +375,47 @@ local function create3DViewer(sourcefolder, title)
     updateView()
 end
 
-maintab:Section({ Title = "visuals" })
+visualtab:Section({ Title = "environment" })
 
-maintab:Toggle({
+visualtab:Toggle({
     Title = "No Fog",
     Default = false,
     Callback = function(value)
         setNoFog(value)
+    end
+})
+
+-- Brightness toggle + extra brightness slider (local visual setting)
+local originalBrightness = Lighting.Brightness
+local brightnessEnabled = false
+local extraBrightness = 0
+local brightnessBase = math.max(originalBrightness, 2)
+
+local function updateBrightness()
+    if brightnessEnabled then
+        Lighting.Brightness = brightnessBase + extraBrightness
+    else
+        Lighting.Brightness = originalBrightness
+    end
+end
+
+visualtab:Toggle({
+    Title = "Brightness",
+    Default = false,
+    Callback = function(value)
+        brightnessEnabled = value
+        updateBrightness()
+    end
+})
+
+visualtab:Slider({
+    Title = "Extra Brightness",
+    Min = 0,
+    Max = 5,
+    Default = 0,
+    Callback = function(value)
+        extraBrightness = value
+        updateBrightness()
     end
 })
 
