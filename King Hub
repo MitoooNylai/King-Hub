@@ -13,7 +13,7 @@ print("do not ignore these")
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Orionservice-hub/Windui-boreal/refs/heads/main/WindUI%20boreal"))()
 
 local window = WindUI:CreateWindow({
-    Title = "King Hub V1",
+    Title = "stk",
     Icon = "rbxassetid://4483345998",
     Author = "xane",
     Folder = "stk_config",
@@ -375,13 +375,13 @@ local function create3DViewer(sourcefolder, title)
     updateView()
 end
 
--- Red Effect toggle for the full-screen red warning overlay in Survive the Killer.
--- It only targets large red-tinted GUI overlays and red ColorCorrection effects.
+-- Red Effect toggle: lightweight periodic scan of PlayerGui only.
+-- This catches existing GUI overlays whose properties change after the round starts,
+-- without repeatedly scanning CoreGui, Lighting, Workspace, or the whole camera tree.
 local redEffectEnabled = false
 local savedRedGui = {}
 local savedRedColorCorrection = {}
 local playerGui = localplayer:FindFirstChildOfClass("PlayerGui") or localplayer:WaitForChild("PlayerGui")
-local coreGui = game:GetService("CoreGui")
 
 local function isStrongRed(color)
     return color.R >= 0.45 and color.R > color.G * 1.25 and color.R > color.B * 1.25
@@ -407,9 +407,7 @@ local function rememberAndHideRedGui(obj)
     local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
     local size = obj.AbsoluteSize
     local fullScreenLike = size.X >= viewport.X * 0.65 and size.Y >= viewport.Y * 0.65
-    if not fullScreenLike then
-        return
-    end
+    if not fullScreenLike then return end
 
     local redBackground = false
     local redImage = false
@@ -433,7 +431,6 @@ local function rememberAndNeutralizeRedCorrection(obj)
     if not redEffectEnabled or not obj:IsA("ColorCorrectionEffect") or savedRedColorCorrection[obj] then
         return
     end
-
     if isStrongRed(obj.TintColor) then
         savedRedColorCorrection[obj] = {
             TintColor = obj.TintColor,
@@ -443,48 +440,35 @@ local function rememberAndNeutralizeRedCorrection(obj)
     end
 end
 
-local function scanContainerInBatches(container)
-    local ok, descendants = pcall(function()
-        return container:GetDescendants()
-    end)
-    if not ok or not descendants then return end
+local function scanRedEffects()
+    if not redEffectEnabled then return end
 
-    -- Process in small batches to avoid a large frame-time spike on mobile.
-    for index, obj in ipairs(descendants) do
-        if not redEffectEnabled then return end
-        rememberAndHideRedGui(obj)
-        rememberAndNeutralizeRedCorrection(obj)
-        if index % 100 == 0 then
-            task.wait()
+    -- PlayerGui is the likely location for the game's red screen overlay.
+    local ok, descendants = pcall(function()
+        return playerGui:GetDescendants()
+    end)
+    if ok and descendants then
+        for index, obj in ipairs(descendants) do
+            if not redEffectEnabled then return end
+            pcall(rememberAndHideRedGui, obj)
+            if index % 150 == 0 then
+                task.wait()
+            end
         end
     end
-end
 
-local function scanRedEffects()
-    scanContainerInBatches(playerGui)
-
-    -- CoreGui is optional; scan it once when enabled, not continuously.
-    pcall(function()
-        scanContainerInBatches(coreGui)
-    end)
-
-    scanContainerInBatches(Lighting)
-
-    local camera = workspace.CurrentCamera
-    if camera then
-        scanContainerInBatches(camera)
+    -- Check only direct Lighting descendants for color grading; avoid expensive broad scans.
+    for _, obj in ipairs(Lighting:GetChildren()) do
+        pcall(rememberAndNeutralizeRedCorrection, obj)
     end
 end
 
 local function restoreRedEffects()
     for obj, values in pairs(savedRedGui) do
         if obj and obj.Parent then
-            pcall(function()
-                obj.Visible = values.Visible
-            end)
+            pcall(function() obj.Visible = values.Visible end)
         end
     end
-
     for obj, values in pairs(savedRedColorCorrection) do
         if obj and obj.Parent then
             pcall(function()
@@ -493,48 +477,32 @@ local function restoreRedEffects()
             end)
         end
     end
-
     table.clear(savedRedGui)
     table.clear(savedRedColorCorrection)
 end
 
-local function checkNewRedEffect(obj)
-    if not redEffectEnabled or not obj then return end
-    task.delay(0.2, function()
-        if redEffectEnabled and obj.Parent then
-            rememberAndHideRedGui(obj)
-            rememberAndNeutralizeRedCorrection(obj)
-        end
-    end)
-end
-
 local function setRedEffect(enabled)
     redEffectEnabled = enabled
-
     if enabled then
-        -- One initial, batched scan. No repeating full-tree polling loop.
-        task.spawn(scanRedEffects)
+        task.spawn(function()
+            while redEffectEnabled do
+                scanRedEffects()
+                task.wait(0.8)
+            end
+        end)
     else
         restoreRedEffects()
     end
 end
 
--- Event-driven detection: only inspect newly added objects.
-playerGui.DescendantAdded:Connect(checkNewRedEffect)
-pcall(function()
-    coreGui.DescendantAdded:Connect(checkNewRedEffect)
-end)
-Lighting.DescendantAdded:Connect(checkNewRedEffect)
-
-local function bindCurrentCamera(camera)
-    if camera then
-        camera.DescendantAdded:Connect(checkNewRedEffect)
+playerGui.DescendantAdded:Connect(function(obj)
+    if redEffectEnabled then
+        task.defer(function()
+            if redEffectEnabled and obj.Parent then
+                pcall(rememberAndHideRedGui, obj)
+            end
+        end)
     end
-end
-
-bindCurrentCamera(workspace.CurrentCamera)
-workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    bindCurrentCamera(workspace.CurrentCamera)
 end)
 
 visualtab:Section({ Title = "environment" })
@@ -555,17 +523,45 @@ visualtab:Toggle({
     end
 })
 
--- Brightness toggle + extra brightness slider (local visual setting)
+-- Global Brightness: brightens the whole scene, not only selected objects.
 local originalBrightness = Lighting.Brightness
+local originalAmbient = Lighting.Ambient
+local originalOutdoorAmbient = Lighting.OutdoorAmbient
+local originalExposure = Lighting.ExposureCompensation
+
 local brightnessEnabled = false
 local extraBrightness = 0
-local brightnessBase = math.max(originalBrightness, 2)
+
+-- A dedicated post-processing effect brightens the full rendered screen.
+local globalBrightEffect = Lighting:FindFirstChild("KingHub_GlobalBrightness")
+if not globalBrightEffect or not globalBrightEffect:IsA("ColorCorrectionEffect") then
+    globalBrightEffect = Instance.new("ColorCorrectionEffect")
+    globalBrightEffect.Name = "KingHub_GlobalBrightness"
+    globalBrightEffect.Parent = Lighting
+end
+globalBrightEffect.Enabled = false
+globalBrightEffect.Contrast = 0
+globalBrightEffect.Saturation = 0
+globalBrightEffect.TintColor = Color3.new(1, 1, 1)
 
 local function updateBrightness()
     if brightnessEnabled then
-        Lighting.Brightness = brightnessBase + extraBrightness
+        -- Extra slider is additive. The base ON state is already brighter.
+        local amount = math.clamp(extraBrightness, 0, 5)
+        Lighting.Brightness = math.max(originalBrightness, 2)
+        Lighting.Ambient = Color3.fromRGB(170, 170, 170)
+        Lighting.OutdoorAmbient = Color3.fromRGB(190, 190, 190)
+        Lighting.ExposureCompensation = math.clamp(originalExposure + 0.35 + (amount * 0.18), -3, 3)
+
+        globalBrightEffect.Brightness = 0.08 + (amount * 0.07)
+        globalBrightEffect.Enabled = true
     else
         Lighting.Brightness = originalBrightness
+        Lighting.Ambient = originalAmbient
+        Lighting.OutdoorAmbient = originalOutdoorAmbient
+        Lighting.ExposureCompensation = originalExposure
+        globalBrightEffect.Brightness = 0
+        globalBrightEffect.Enabled = false
     end
 end
 
