@@ -29,6 +29,7 @@ local autofarmtab = window:Tab({ Title = "autofarm", Icon = "zap" })
 local esptab = window:Tab({ Title = "esp", Icon = "eye" })
 local animtab = window:Tab({ Title = "animations", Icon = "activity" })
 
+local Lighting = game:GetService("Lighting")
 local players = game:GetService("Players")
 local localplayer = players.LocalPlayer
 local workspace = game:GetService("Workspace")
@@ -739,6 +740,38 @@ maintab:Toggle({
         else
             if gp then gp:SetAttribute("IncreasedKillerChance", false) end
             if st then st:SetAttribute("killer_chance_3x", false) end
+        end
+    end
+})
+
+maintab:Toggle({
+    Title = "No Fog",
+    Default = false,
+    Callback = function(v)
+        nofog = v
+
+        if v then
+            Lighting.FogStart = 0
+            Lighting.FogEnd = 1000000
+
+            for obj in pairs(originalAtmosphere) do
+                if obj.Parent then
+                    obj.Density = 0
+                    obj.Haze = 0
+                    obj.Glare = 0
+                end
+            end
+        else
+            Lighting.FogStart = originalFogStart
+            Lighting.FogEnd = originalFogEnd
+
+            for obj, data in pairs(originalAtmosphere) do
+                if obj.Parent then
+                    obj.Density = data.Density
+                    obj.Haze = data.Haze
+                    obj.Glare = data.Glare
+                end
+            end
         end
     end
 })
