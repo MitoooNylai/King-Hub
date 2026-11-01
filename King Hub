@@ -24,7 +24,7 @@ local window = WindUI:CreateWindow({
     HasOutline = true,
 })
 
-local maintab = window:Tab({ Title = "main", Icon = "home" })
+local maintab = window:Tab({ Title = "main", Icon = "lucide-home" })
 local autofarmtab = window:Tab({ Title = "autofarm", Icon = "zap" })
 local esptab = window:Tab({ Title = "esp", Icon = "eye" })
 local animtab = window:Tab({ Title = "animations", Icon = "activity" })
