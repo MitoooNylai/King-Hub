@@ -375,6 +375,113 @@ local function create3DViewer(sourcefolder, title)
     updateView()
 end
 
+-- Red Effect toggle: hide only red-tinted full-screen overlays / red color correction.
+-- This is a local visual filter; the exact game effect may vary between rounds.
+local redEffectEnabled = false
+local savedRedGui = {}
+local savedRedColorCorrection = {}
+local playerGui = localplayer:FindFirstChildOfClass("PlayerGui") or localplayer:WaitForChild("PlayerGui")
+
+local function isStrongRed(color)
+    return color.R >= 0.55 and color.R > color.G * 1.35 and color.R > color.B * 1.35
+end
+
+local function rememberAndHideRedGui(obj)
+    if not redEffectEnabled or not obj:IsA("GuiObject") or savedRedGui[obj] then
+        return
+    end
+
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
+    local size = obj.AbsoluteSize
+    local fullScreenLike = size.X >= viewport.X * 0.70 and size.Y >= viewport.Y * 0.70
+    if not fullScreenLike then
+        return
+    end
+
+    local redBackground = false
+    local redImage = false
+    pcall(function()
+        redBackground = obj.BackgroundTransparency < 1 and isStrongRed(obj.BackgroundColor3)
+    end)
+    pcall(function()
+        redImage = obj.ImageTransparency < 1 and isStrongRed(obj.ImageColor3)
+    end)
+
+    if redBackground or redImage then
+        savedRedGui[obj] = { Visible = obj.Visible }
+        obj.Visible = false
+    end
+end
+
+local function rememberAndNeutralizeRedCorrection(obj)
+    if not redEffectEnabled or not obj:IsA("ColorCorrectionEffect") or savedRedColorCorrection[obj] then
+        return
+    end
+
+    if isStrongRed(obj.TintColor) then
+        savedRedColorCorrection[obj] = { TintColor = obj.TintColor }
+        obj.TintColor = Color3.new(1, 1, 1)
+    end
+end
+
+local function scanRedEffects()
+    for _, obj in ipairs(playerGui:GetDescendants()) do
+        rememberAndHideRedGui(obj)
+    end
+    for _, obj in ipairs(Lighting:GetDescendants()) do
+        rememberAndNeutralizeRedCorrection(obj)
+    end
+    local camera = workspace.CurrentCamera
+    if camera then
+        for _, obj in ipairs(camera:GetDescendants()) do
+            rememberAndNeutralizeRedCorrection(obj)
+        end
+    end
+end
+
+local function setRedEffect(enabled)
+    redEffectEnabled = enabled
+    if enabled then
+        scanRedEffects()
+    else
+        for obj, values in pairs(savedRedGui) do
+            if obj and obj.Parent then
+                obj.Visible = values.Visible
+            end
+        end
+        for obj, values in pairs(savedRedColorCorrection) do
+            if obj and obj.Parent then
+                obj.TintColor = values.TintColor
+            end
+        end
+        table.clear(savedRedGui)
+        table.clear(savedRedColorCorrection)
+    end
+end
+
+playerGui.DescendantAdded:Connect(function(obj)
+    if redEffectEnabled then
+        task.defer(function()
+            if obj and obj.Parent then
+                rememberAndHideRedGui(obj)
+            end
+        end)
+    end
+end)
+
+Lighting.DescendantAdded:Connect(function(obj)
+    if redEffectEnabled then
+        rememberAndNeutralizeRedCorrection(obj)
+    end
+end)
+
+workspace.DescendantAdded:Connect(function(obj)
+    if redEffectEnabled then
+        rememberAndNeutralizeRedCorrection(obj)
+    end
+end)
+
 visualtab:Section({ Title = "environment" })
 
 visualtab:Toggle({
@@ -382,6 +489,14 @@ visualtab:Toggle({
     Default = false,
     Callback = function(value)
         setNoFog(value)
+    end
+})
+
+visualtab:Toggle({
+    Title = "Red Effect",
+    Default = false,
+    Callback = function(value)
+        setRedEffect(value)
     end
 })
 
