@@ -96,6 +96,32 @@ movementtab:Slider({
     end
 })
 
+movementtab:Section({ Title = "Gamepass Player" })
+
+local spoofdj = false
+movementtab:Toggle({
+    Title = "Double Jump",
+    Default = false,
+    Callback = function(v)
+        spoofdj = v
+        local gp = localplayer:FindFirstChild("Gamepasses")
+        local st = localplayer:FindFirstChild("Settings")
+        
+        if v then
+            task.spawn(function()
+                while spoofdj do
+                    if gp then gp:SetAttribute("DoubleJump", true) end
+                    if st then st:SetAttribute("double_jump", true) end
+                    task.wait(0.5)
+                end
+            end)
+        else
+            if gp then gp:SetAttribute("DoubleJump", false) end
+            if st then st:SetAttribute("double_jump", false) end
+        end
+    end
+})
+
 
 -- Local visual No Fog toggle for Survive the Killer
 local noFogEnabled = false
@@ -1016,30 +1042,6 @@ maintab:Button({
 })
 
 maintab:Section({ Title = "spoof gamepasses without paying" })
-
-local spoofdj = false
-maintab:Toggle({
-    Title = "get double jump gamepass",
-    Default = false,
-    Callback = function(v)
-        spoofdj = v
-        local gp = localplayer:FindFirstChild("Gamepasses")
-        local st = localplayer:FindFirstChild("Settings")
-        
-        if v then
-            task.spawn(function()
-                while spoofdj do
-                    if gp then gp:SetAttribute("DoubleJump", true) end
-                    if st then st:SetAttribute("double_jump", true) end
-                    task.wait(0.5)
-                end
-            end)
-        else
-            if gp then gp:SetAttribute("DoubleJump", false) end
-            if st then st:SetAttribute("double_jump", false) end
-        end
-    end
-})
 
 local spoofkiller = false
 maintab:Toggle({
