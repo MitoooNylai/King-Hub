@@ -13,7 +13,7 @@ print("do not ignore these")
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Orionservice-hub/Windui-boreal/refs/heads/main/WindUI%20boreal"))()
 
 local window = WindUI:CreateWindow({
-    Title = "stk",
+    Title = "King Hub V1",
     Icon = "rbxassetid://4483345998",
     Author = "xane",
     Folder = "stk_config",
@@ -443,31 +443,36 @@ local function rememberAndNeutralizeRedCorrection(obj)
     end
 end
 
-local function scanRedEffects()
-    local containers = { playerGui }
-    pcall(function()
-        table.insert(containers, coreGui)
+local function scanContainerInBatches(container)
+    local ok, descendants = pcall(function()
+        return container:GetDescendants()
     end)
+    if not ok or not descendants then return end
 
-    for _, container in ipairs(containers) do
-        pcall(function()
-            for _, obj in ipairs(container:GetDescendants()) do
-                rememberAndHideRedGui(obj)
-            end
-        end)
-    end
-
-    pcall(function()
-        for _, obj in ipairs(Lighting:GetDescendants()) do
-            rememberAndNeutralizeRedCorrection(obj)
+    -- Process in small batches to avoid a large frame-time spike on mobile.
+    for index, obj in ipairs(descendants) do
+        if not redEffectEnabled then return end
+        rememberAndHideRedGui(obj)
+        rememberAndNeutralizeRedCorrection(obj)
+        if index % 100 == 0 then
+            task.wait()
         end
+    end
+end
+
+local function scanRedEffects()
+    scanContainerInBatches(playerGui)
+
+    -- CoreGui is optional; scan it once when enabled, not continuously.
+    pcall(function()
+        scanContainerInBatches(coreGui)
     end)
+
+    scanContainerInBatches(Lighting)
 
     local camera = workspace.CurrentCamera
     if camera then
-        for _, obj in ipairs(camera:GetDescendants()) do
-            rememberAndNeutralizeRedCorrection(obj)
-        end
+        scanContainerInBatches(camera)
     end
 end
 
@@ -493,46 +498,43 @@ local function restoreRedEffects()
     table.clear(savedRedColorCorrection)
 end
 
+local function checkNewRedEffect(obj)
+    if not redEffectEnabled or not obj then return end
+    task.delay(0.2, function()
+        if redEffectEnabled and obj.Parent then
+            rememberAndHideRedGui(obj)
+            rememberAndNeutralizeRedCorrection(obj)
+        end
+    end)
+end
+
 local function setRedEffect(enabled)
     redEffectEnabled = enabled
 
     if enabled then
-        task.spawn(function()
-            while redEffectEnabled do
-                scanRedEffects()
-                task.wait(0.4)
-            end
-        end)
+        -- One initial, batched scan. No repeating full-tree polling loop.
+        task.spawn(scanRedEffects)
     else
         restoreRedEffects()
     end
 end
 
-playerGui.DescendantAdded:Connect(function(obj)
-    if redEffectEnabled then
-        task.delay(0.15, function()
-            if redEffectEnabled and obj and obj.Parent then
-                rememberAndHideRedGui(obj)
-                rememberAndNeutralizeRedCorrection(obj)
-            end
-        end)
-    end
+-- Event-driven detection: only inspect newly added objects.
+playerGui.DescendantAdded:Connect(checkNewRedEffect)
+pcall(function()
+    coreGui.DescendantAdded:Connect(checkNewRedEffect)
 end)
+Lighting.DescendantAdded:Connect(checkNewRedEffect)
 
-Lighting.DescendantAdded:Connect(function(obj)
-    if redEffectEnabled then
-        task.defer(function()
-            rememberAndNeutralizeRedCorrection(obj)
-        end)
+local function bindCurrentCamera(camera)
+    if camera then
+        camera.DescendantAdded:Connect(checkNewRedEffect)
     end
-end)
+end
 
-workspace.DescendantAdded:Connect(function(obj)
-    if redEffectEnabled then
-        task.defer(function()
-            rememberAndNeutralizeRedCorrection(obj)
-        end)
-    end
+bindCurrentCamera(workspace.CurrentCamera)
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    bindCurrentCamera(workspace.CurrentCamera)
 end)
 
 visualtab:Section({ Title = "environment" })
