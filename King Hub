@@ -24,12 +24,12 @@ local window = WindUI:CreateWindow({
     HasOutline = true,
 })
 
-local maintab = window:Tab({ Title = "main", Icon = "home" })
+local maintab = window:Tab({ Title = "main", Icon = "house" })
 local autofarmtab = window:Tab({ Title = "autofarm", Icon = "zap" })
 local esptab = window:Tab({ Title = "esp", Icon = "eye" })
 local animtab = window:Tab({ Title = "animations", Icon = "activity" })
 local visualtab = window:Tab({ Title = "visual", Icon = "sun" })
-local movementtab = window:Tab({ Title = "movement", Icon = "person-standing" })
+local movementtab = window:Tab({ Title = "Players", Icon = "users" })
 
 local players = game:GetService("Players")
 local localplayer = players.LocalPlayer
@@ -72,7 +72,7 @@ localplayer.CharacterAdded:Connect(function(character)
     end
 end)
 
-movementtab:Section({ Title = "movement settings" })
+movementtab:Section({ Title = "player settings" })
 
 movementtab:Toggle({
     Title = "Walk",
