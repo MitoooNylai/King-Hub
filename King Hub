@@ -43,6 +43,10 @@ local autocollect = false
 local onlycollectwhenkillerhere = false
 local killerisinround = false
 
+local nofog = false
+local originalFogStart = Lighting.FogStart
+local originalFogEnd = Lighting.FogEnd
+
 local hidekiller = false
 local hidekillerdist = 15
 local autofarmactive = false
@@ -65,6 +69,18 @@ local blacklistvalue = 0
 local function gethrp()
     local char = localplayer.Character
     return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local originalAtmosphere()
+	for _, obj in ipairs(Lighting:GetDescendants()) do
+	    if obj:IsA("Atmosphere") then
+	        originalAtmosphere[obj] = {
+	            Density = obj.Density,
+	            Haze = obj.Haze,
+	            Glare = obj.Glare
+	        }
+	    end
+	end
 end
 
 local function getlootspawns()
