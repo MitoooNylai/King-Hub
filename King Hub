@@ -375,15 +375,27 @@ local function create3DViewer(sourcefolder, title)
     updateView()
 end
 
--- Red Effect toggle: hide only red-tinted full-screen overlays / red color correction.
--- This is a local visual filter; the exact game effect may vary between rounds.
+-- Red Effect toggle for the full-screen red warning overlay in Survive the Killer.
+-- It only targets large red-tinted GUI overlays and red ColorCorrection effects.
 local redEffectEnabled = false
 local savedRedGui = {}
 local savedRedColorCorrection = {}
 local playerGui = localplayer:FindFirstChildOfClass("PlayerGui") or localplayer:WaitForChild("PlayerGui")
+local coreGui = game:GetService("CoreGui")
 
 local function isStrongRed(color)
-    return color.R >= 0.55 and color.R > color.G * 1.35 and color.R > color.B * 1.35
+    return color.R >= 0.45 and color.R > color.G * 1.25 and color.R > color.B * 1.25
+end
+
+local function isRedOverlayName(name)
+    name = string.lower(name or "")
+    return string.find(name, "red")
+        or string.find(name, "damage")
+        or string.find(name, "danger")
+        or string.find(name, "killer")
+        or string.find(name, "threat")
+        or string.find(name, "vignette")
+        or string.find(name, "heartbeat")
 end
 
 local function rememberAndHideRedGui(obj)
@@ -394,21 +406,24 @@ local function rememberAndHideRedGui(obj)
     local camera = workspace.CurrentCamera
     local viewport = camera and camera.ViewportSize or Vector2.new(800, 600)
     local size = obj.AbsoluteSize
-    local fullScreenLike = size.X >= viewport.X * 0.70 and size.Y >= viewport.Y * 0.70
+    local fullScreenLike = size.X >= viewport.X * 0.65 and size.Y >= viewport.Y * 0.65
     if not fullScreenLike then
         return
     end
 
     local redBackground = false
     local redImage = false
+    local nameMatch = isRedOverlayName(obj.Name)
+
     pcall(function()
-        redBackground = obj.BackgroundTransparency < 1 and isStrongRed(obj.BackgroundColor3)
+        redBackground = obj.BackgroundTransparency < 0.98 and isStrongRed(obj.BackgroundColor3)
     end)
     pcall(function()
-        redImage = obj.ImageTransparency < 1 and isStrongRed(obj.ImageColor3)
+        redImage = obj.ImageTransparency < 0.98 and isStrongRed(obj.ImageColor3)
     end)
 
-    if redBackground or redImage then
+    local imageOverlay = obj:IsA("ImageLabel") or obj:IsA("ImageButton")
+    if redBackground or redImage or (nameMatch and imageOverlay) then
         savedRedGui[obj] = { Visible = obj.Visible }
         obj.Visible = false
     end
@@ -420,18 +435,34 @@ local function rememberAndNeutralizeRedCorrection(obj)
     end
 
     if isStrongRed(obj.TintColor) then
-        savedRedColorCorrection[obj] = { TintColor = obj.TintColor }
-        obj.TintColor = Color3.new(1, 1, 1)
+        savedRedColorCorrection[obj] = {
+            TintColor = obj.TintColor,
+            Enabled = obj.Enabled
+        }
+        obj.Enabled = false
     end
 end
 
 local function scanRedEffects()
-    for _, obj in ipairs(playerGui:GetDescendants()) do
-        rememberAndHideRedGui(obj)
+    local containers = { playerGui }
+    pcall(function()
+        table.insert(containers, coreGui)
+    end)
+
+    for _, container in ipairs(containers) do
+        pcall(function()
+            for _, obj in ipairs(container:GetDescendants()) do
+                rememberAndHideRedGui(obj)
+            end
+        end)
     end
-    for _, obj in ipairs(Lighting:GetDescendants()) do
-        rememberAndNeutralizeRedCorrection(obj)
-    end
+
+    pcall(function()
+        for _, obj in ipairs(Lighting:GetDescendants()) do
+            rememberAndNeutralizeRedCorrection(obj)
+        end
+    end)
+
     local camera = workspace.CurrentCamera
     if camera then
         for _, obj in ipairs(camera:GetDescendants()) do
@@ -440,31 +471,49 @@ local function scanRedEffects()
     end
 end
 
+local function restoreRedEffects()
+    for obj, values in pairs(savedRedGui) do
+        if obj and obj.Parent then
+            pcall(function()
+                obj.Visible = values.Visible
+            end)
+        end
+    end
+
+    for obj, values in pairs(savedRedColorCorrection) do
+        if obj and obj.Parent then
+            pcall(function()
+                obj.TintColor = values.TintColor
+                obj.Enabled = values.Enabled
+            end)
+        end
+    end
+
+    table.clear(savedRedGui)
+    table.clear(savedRedColorCorrection)
+end
+
 local function setRedEffect(enabled)
     redEffectEnabled = enabled
+
     if enabled then
-        scanRedEffects()
+        task.spawn(function()
+            while redEffectEnabled do
+                scanRedEffects()
+                task.wait(0.4)
+            end
+        end)
     else
-        for obj, values in pairs(savedRedGui) do
-            if obj and obj.Parent then
-                obj.Visible = values.Visible
-            end
-        end
-        for obj, values in pairs(savedRedColorCorrection) do
-            if obj and obj.Parent then
-                obj.TintColor = values.TintColor
-            end
-        end
-        table.clear(savedRedGui)
-        table.clear(savedRedColorCorrection)
+        restoreRedEffects()
     end
 end
 
 playerGui.DescendantAdded:Connect(function(obj)
     if redEffectEnabled then
-        task.defer(function()
-            if obj and obj.Parent then
+        task.delay(0.15, function()
+            if redEffectEnabled and obj and obj.Parent then
                 rememberAndHideRedGui(obj)
+                rememberAndNeutralizeRedCorrection(obj)
             end
         end)
     end
@@ -472,13 +521,17 @@ end)
 
 Lighting.DescendantAdded:Connect(function(obj)
     if redEffectEnabled then
-        rememberAndNeutralizeRedCorrection(obj)
+        task.defer(function()
+            rememberAndNeutralizeRedCorrection(obj)
+        end)
     end
 end)
 
 workspace.DescendantAdded:Connect(function(obj)
     if redEffectEnabled then
-        rememberAndNeutralizeRedCorrection(obj)
+        task.defer(function()
+            rememberAndNeutralizeRedCorrection(obj)
+        end)
     end
 end)
 
